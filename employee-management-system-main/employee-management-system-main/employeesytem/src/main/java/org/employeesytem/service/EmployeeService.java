@@ -1,0 +1,71 @@
+package org.employeesytem.service;
+
+import org.employeesytem.dto.Employee;
+import org.employeesytem.exceptions.DuplicateEmployeeException;
+import org.employeesytem.exceptions.EmployeeNotFoundException;
+import org.employeesytem.repository.EmployeeRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class EmployeeService {
+    private final EmployeeRepository repository;
+
+    public EmployeeService(EmployeeRepository repository) {
+        this.repository = repository;
+    }
+
+    public Page<Employee> findAllEmployees(Pageable pageable, String name, String department) {
+        String nameFilter = StringUtils.hasText(name) ? name.trim() : null;
+        String departmentFilter = StringUtils.hasText(department) ? department.trim() : null;
+        if (nameFilter == null && departmentFilter == null) {
+            return repository.findAll(pageable);
+        }
+        return repository.findByCriteria(nameFilter, departmentFilter, pageable);
+    }
+
+    public Employee addEmployee(Employee employee) {
+        try {
+            return repository.save(employee);
+        } catch (IllegalArgumentException exception) {
+            throw new DuplicateEmployeeException(exception.getMessage());
+        }
+    }
+
+    public Employee findByEmployeeId(int employeeId) {
+        Optional<Employee> employee = repository.findById(employeeId);
+        if (employee.isPresent()) {
+            return employee.get();
+        } else {
+            throw new EmployeeNotFoundException("Employee with id " + employeeId + " not exists");
+        }
+    }
+
+    public Employee updateEmployee(int id, Employee employee) {
+        employee.setId(id);
+        return repository.save(employee);
+    }
+
+    public void deleteEmployee(int employeeId) {
+        repository.deleteById(employeeId);
+    }
+
+    public Long getEmployeeCount() {
+        return repository.count();
+    }
+
+    public List<Employee> findAllEmployeesForExport(String name, String department, Sort sort) {
+        String nameFilter = StringUtils.hasText(name) ? name.trim() : null;
+        String departmentFilter = StringUtils.hasText(department) ? department.trim() : null;
+        if (nameFilter == null && departmentFilter == null) {
+            return repository.findAll(sort);
+        }
+        return repository.findByCriteriaForExport(nameFilter, departmentFilter, sort);
+    }
+}

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Employees List</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table, th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        /* Controls Container for Sorting and Search */
+        .controls-container {
+            display: flex;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* New class for search group */
+        .search-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* Pagination Styles */
+        .pagination-container {
+            margin-top: 15px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+        }
+        button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header-container">
+    <div>
+        <a href="/create.html">Create</a> |
+        <a href="/update.html">Update</a>
+        <button onclick="exportEmployeesToCSV()">&#x2B07; Export to CSV</button>
+    </div>
+    <h3>Total Employees: <span id="empCount">0</span></h3>
+</div>
+
+<h2>Employees List</h2>
+
+<div class="controls-container">
+
+    <div class="search-group">
+        <label for="searchQuery">Search Name:</label>
+        <input type="text" id="searchQuery" placeholder="Enter name..." />
+    </div>
+
+    <div class="search-group">
+        <label for="departmentQuery">Filter Department:</label>
+        <select id="departmentQuery">
+            <option value="">All Departments</option>
+            <option value="HR">HR</option>
+            <option value="IT">IT</option>
+            <option value="MARKETING">Marketing</option>
+            <option value="SALES">Sales</option>
+            <option value="FINANCE">Finance</option>
+        </select>
+    </div>
+    <button onclick="loadEmployees(0)">Apply Filter</button>
+
+    <label for="sortField">Sort By:</label>
+    <select id="sortField" onchange="loadEmployees(0)">
+        <option value="id">ID</option>
+        <option value="firstName">First Name</option>
+        <option value="department">Department</option>
+        <option value="salary">Salary</option>
+        <option value="lastName">Last Name</option>
+    </select>
+
+    <label for="sortDirection">Direction:</label>
+    <select id="sortDirection" onchange="loadEmployees(0)">
+        <option value="asc">Ascending (A-Z, Low-High)</option>
+        <option value="desc">Descending (Z-A, High-Low)</option>
+    </select>
+</div>
+
+
+<table id="employeeTable">
+    <thead>
+    <tr>
+        <th>ID</th><th>First Name</th><th>Last Name</th><th>Email</th>
+        <th>Department</th><th>Salary</th><th>Action</th>
+    </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div class="pagination-container">
+    <span id="pageInfo">Page 1 of 1</span>
+    <button id="prevBtn" onclick="changePage(-1)">Previous</button>
+    <button id="nextBtn" onclick="changePage(1)">Next</button>
+</div>
+
+<script>
+    // GLOBAL STATE
+    let currentPage = 0;
+    const pageSize = 5; // You can change this to 10 or 20
+    let totalPages = 0;
+
+    async function loadEmployees(page = 0) {
+        try {
+            // Update the global current page
+            currentPage = page;
+
+            // 1. GET ALL CONTROL VALUES
+            const sortField = document.getElementById("sortField").value;
+            const sortDirection = document.getElementById("sortDirection").value;
+            const searchQuery = document.getElementById("searchQuery").value.trim();
+            const departmentQuery = document.getElementById("departmentQuery").value.trim();
+
+            const params = [];
+            params.push(`page=${currentPage}`);
+            params.push(`size=${pageSize}`);
+            params.push(`sort=${sortField},${sortDirection}`);
+
+            // Add Name search query if present
+            if (searchQuery) {
+                params.push(`name=${encodeURIComponent(searchQuery)}`);
+            }
+            // Add Department search query if present
+            if (departmentQuery) {
+                params.push(`department=${encodeURIComponent(departmentQuery)}`);
+            }
+
+            const url = `/api/v1/employees?${params.join('&')}`;
+
+            // 3. Fetch data
+            const res = await fetch(url);
+
+            if (!res.ok) throw new Error("Failed to fetch");
+
+            const data = await res.json();
+
+            // 4. EXTRACT DATA
+            const employees = data.content || [];
+            const pageMeta = data.page || {};
+
+            // Use safe access on pageMeta, defaulting to 0 or 1 for safety
+            const totalElements = pageMeta.totalElements ?? 0;
+            const totalPagesCount = pageMeta.totalPages ?? 1;
+            const currentPageNumber = pageMeta.number ?? 0;
+
+            // Update Total Pages global variable
+            totalPages = totalPagesCount;
+
+            // 5. RENDER TABLE
+            let rows = "";
+            if (employees.length === 0) {
+                rows = '<tr><td colspan="7" style="text-align:center">No employees found.</td></tr>';
+            } else {
+                employees.forEach(emp => {
+                    rows += `
+                        <tr>
+                            <td>${emp.id}</td>
+                            <td>${emp.firstName}</td>
+                            <td>${emp.lastName}</td>
+                            <td>${emp.email}</td>
+                            <td>${emp.department}</td>
+                            <td>${emp.salary}</td>
+                            <td>
+                                <button onclick="deleteEmployee(${emp.id})">Delete</button>
+                            </td>
+                        </tr>`;
+                });
+            }
+            document.querySelector("#employeeTable tbody").innerHTML = rows;
+
+            // 6. UPDATE UI INFO (Total count and Page X of Y)
+            document.getElementById("empCount").innerText = totalElements;
+            document.getElementById("pageInfo").innerText = `Page ${currentPageNumber + 1} of ${totalPagesCount || 1}`;
+
+            // 7. ENABLE/DISABLE BUTTONS
+            updatePaginationButtons();
+
+        } catch (error) {
+            console.error("Error loading employees:", error);
+            document.querySelector("#employeeTable tbody").innerHTML = '<tr><td colspan="7">Error loading data.</td></tr>';
+            document.getElementById("empCount").innerText = 0; // Set count to 0 on error
+            document.getElementById("pageInfo").innerText = `Page 1 of 1`; // Reset page info on error
+        }
+    }
+
+    function updatePaginationButtons() {
+        const prevBtn = document.getElementById("prevBtn");
+        const nextBtn = document.getElementById("nextBtn");
+
+        // Disable Prev if we are on the first page (0)
+        prevBtn.disabled = (currentPage === 0);
+
+        // Disable Next if we are on the last page or if there are no pages
+        nextBtn.disabled = (currentPage >= totalPages - 1) || (totalPages === 0);
+    }
+
+    function changePage(direction) {
+        const newPage = currentPage + direction;
+        // Safety check to ensure we don't go out of bounds
+        if (newPage >= 0 && newPage < totalPages) {
+            loadEmployees(newPage);
+        }
+    }
+
+    function deleteEmployee(id) {
+        if(!confirm("Delete this employee?")) return;
+
+        fetch(`/api/v1/employees/${id}`, { method: "DELETE" })
+            .then(() => {
+                // Reload the CURRENT page after deletion
+                loadEmployees(currentPage);
+            })
+            .catch(error => console.error("Error deleting employee:", error));
+    }
+
+    function exportEmployeesToCSV() {
+        const sortField = document.getElementById("sortField").value;
+        const sortDirection = document.getElementById("sortDirection").value;
+        const searchQuery = document.getElementById("searchQuery").value.trim();
+        const departmentQuery = document.getElementById("departmentQuery").value.trim();
+
+        const params = [];
+        params.push(`sort=${sortField},${sortDirection}`);
+
+        if (searchQuery) {
+            params.push(`name=${encodeURIComponent(searchQuery)}`);
+        }
+        if (departmentQuery) {
+            params.push(`department=${encodeURIComponent(departmentQuery)}`);
+        }
+
+        const exportUrl = `/api/v1/employees/export?${params.join('&')}`;
+
+        window.location.href = exportUrl;
+    }
+
+    // Initial Load
+    loadEmployees(0);
+</script>
+
+</body>
+</html>
